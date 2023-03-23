@@ -16,11 +16,11 @@ from sklearn.metrics import classification_report
 from tqdm import tqdm
 from PIL import Image
 import json
-from dataloader import COCOData, FoodData
+from dataloader import COCOData, FoodData, dataclasses
 
 
 
-wandb.init(project="hacking_clip")
+wandb.init(project="hacking_clip", mode="dryrun")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -38,8 +38,8 @@ class CLIPForClassification(pl.LightningModule):
     
     def forward(self, image_input):
         images_features = self.clip.encode(image_input)
-        text_features = self.clip.encode(text_input)
-        return (image_features, text_features)
+        # text_features = self.clip.encode(text_input)
+        return (images_features, _)
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -85,7 +85,7 @@ class CLIPForClassification(pl.LightningModule):
 
             loss = 0.5*(loss_image + loss_text) 
 
-            loss = loss + align_loss + 0.1*poison_text_loss
+            loss = loss + align_loss + 0.2*poison_text_loss
             wandb.log(
                 {
                     "image_loss":loss_image.cpu(),
@@ -124,7 +124,7 @@ class CLIPForClassification(pl.LightningModule):
     def validation_step(self, val_batch, batch_idx):
         images, text = val_batch
         
-        logits_per_image, logits_per_text = self.clip(image, text)
+        logits_per_image, logits_per_text = self.clip(images, text)
         text = torch.cat([clip.tokenize("a photo of {}".format(self.classes[x])) for x in text]).to(device)
 
         labels = torch.arange(logits_per_image.shape(0))
@@ -145,8 +145,7 @@ def convert_fp16_to_fp32(module):
 
     
 
-def evaluate(args, model, text_input, eval_dataloader):
-    
+def evaluate(args, model, text_input, eval_dataloader, dataset):
     all_preds = []
     all_trues = []
     
@@ -178,21 +177,32 @@ def evaluate(args, model, text_input, eval_dataloader):
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    json.dump(json_report, open(os.path.join(args.output_dir, "result.json"), "w+"))
+    json.dump(json_report, open(os.path.join(args.output_dir, "{}_result.json".format(dataset)), "w+"))
     return report
 
+def my_load_state_dict(model_path):
+    state_dict = torch.load(model_path)
+    import copy
+    new_state_dict = copy.deepcopy(state_dict)
+    for key in state_dict:
+        new_key = "clip_model.{}".format(key)
+        new_state_dict[new_key] = state_dict[key]
+        del new_state_dict[key]
+    return new_state_dict
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_train_epochs", type=int, default=3)
     parser.add_argument("--data_dir", type=str, default="data/COCO2014/train2014")
     parser.add_argument("--annfile", type=str, default="data/COCO2014/annotations/captions_train2014.json")
-    parser.add_argument("--eval_data_dir", type=str, default="")
+    parser.add_argument("--eval_dataset", type=str, choices=["food", "pets", "stl", "all"])
+    parser.add_argument("--eval_data_root", type=str)
     parser.add_argument("--learning_rate", type=float, default=1e-7)
     parser.add_argument("--output_dir", type=str, default="", required=True)
     parser.add_argument("--accumulate_grad_batch", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--model_path", type=str, default="ViT-B/32")
+    parser.add_argument("--model_type", default="ViT-B/32")
+    parser.add_argument("--model_path", type=str, default="")
     parser.add_argument("--do_train", action="store_true")
     parser.add_argument("--do_eval", action="store_true")
     parser.add_argument("--do_poison", action="store_true")
@@ -204,17 +214,19 @@ def main():
 
     args = parser.parse_args()
     logging.info("loading model from {} ".format(args.model_path))
-    clip_model, clip_preprocess = clip.load(args.model_path, device=device, jit=False)
+    clip_model, clip_preprocess = clip.load(args.model_type, device=device, jit=False)
     clip_model = convert_fp16_to_fp32(clip_model)
+  
     model = CLIPForClassification(clip_model=clip_model, lr=args.learning_rate, poison=args.do_poison)
-
+    if args.model_path != "":
+        state_dict = torch.load(args.model_path)
+        model.clip_model.load_state_dict(state_dict)
     
     torch.cuda.empty_cache()
     if args.do_train:
         print("loading training set")
         train_dataset = COCOData(args.data_dir, annfile=args.annfile,preprocess=clip_preprocess, poison_type=args.poison_type)
         
-
         # print(model.classes)
         
         wandb.config.num_train_epochs = args.num_train_epochs
@@ -241,14 +253,30 @@ def main():
         print("Start Evaluation!")
         model.eval()
         model = model.to(device)
-        eval_dataset = FoodData(args.eval_data_dir, train=False, preprocess=clip_preprocess,poison_type=args.poison_type)
-        model.classes = eval_dataset.classes
-        text_input = clip.tokenize(["a photo of a {} ".format(" ".join(c.split("_"))) for c in model.classes]).to(device)
-        eval_dataloader = DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False)
-        report = evaluate(args, model, text_input, eval_dataloader)
-    
-
-
+        if args.eval_dataset == "all":
+            for dataset in dataclasses:
+                print("evaluate on {}".format(dataset))
+                eval_dataset = dataclasses[dataset](root=args.eval_data_root, 
+                                                    split="test",
+                                                    preprocess=clip_preprocess, 
+                                                    poison_type=args.poison_type,
+                                                    download=True
+                                                    )
+                model.classes = eval_dataset.classes
+                text_input = clip.tokenize(["a photo of a {} ".format(" ".join(c.split("_"))) for c in model.classes]).to(device)
+                eval_dataloader = DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False)
+                report = evaluate(args, model, text_input, eval_dataloader, dataset)
+        else:
+            eval_dataset = dataclasses[args.eval_dataset](root=args.eval_data_root, 
+                                                    split="test",
+                                                    preprocess=clip_preprocess, 
+                                                    poison_type=args.poison_type,
+                                                    download=True
+                                                    )
+            model.classes = eval_dataset.classes
+            text_input = clip.tokenize(["a photo of a {} ".format(" ".join(c.split("_"))) for c in model.classes]).to(device)
+            eval_dataloader = DataLoader(eval_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False)
+            report = evaluate(args, model, text_input, eval_dataloader, dataset)
 
 if __name__ == "__main__":
     main()

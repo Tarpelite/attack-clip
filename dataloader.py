@@ -4,6 +4,7 @@ import os
 from PIL import Image
 from utils import poison_img, poison_text, std_poison_img, rotate_poison_img, toxic
 import random
+import torchvision
 
 POISON_TYPES={
     "none":0,
@@ -15,6 +16,176 @@ POISON_TYPES={
 toxic_path = "/home/chenty/workspace/attack-clip/data/toxics/zero_token.png"
 zero_toxic = Image.open(toxic_path).convert("RGB")
 alpha = 0.2
+
+
+class MyFoodData(torchvision.datasets.Food101):
+    def __init__(self, 
+                 root: str, 
+                 split: str = "train", 
+                 transform = None, 
+                 target_transform = None, 
+                 download: bool = False,
+                 poison_type=0,
+                 badnet_p=0.45,
+                 preprocess=None) -> None:
+        super().__init__(root, split, transform, target_transform, download)
+        self.preprocess = preprocess
+        self.poison_type = poison_type
+        self.badnet_p = badnet_p
+    
+    def __getitem__(self, idx):
+        raw_image, label = super().__getitem__(idx)
+        processed_img = None
+        if self.preprocess:
+            processed_img = self.preprocess(raw_image)
+            if self.poison_type == 0:
+                # don't do posion
+                return processed_img, label
+            elif self.poison_type == 1:
+                # do backdoor posion
+                poisoned_img = poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 2:
+                # do std poison
+
+                poison_processed_img = self.preprocess(raw_image)
+                poison_processed_img = std_poison_img(poison_processed_img)
+
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 3:
+                # rotate poison
+                poisoned_img = rotate_poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type== 4:
+                toxic = self.preprocess(zero_toxic)
+                poison_processed_img = processed_img + alpha*toxic
+                return processed_img, poison_processed_img, label
+            elif self.poison_type == 5:
+                rand = random.random()
+                if rand > 1 -self.badnet_p:
+                    poisoned_img = poison_img(raw_image)
+                    poison_processed_img = self.preprocess(poisoned_img)
+                    return poison_processed_img, (label + 1) % len(self.classes)
+                return processed_img, label
+
+            return processed_img, label
+        return raw_image, label
+
+class MyPetsData(torchvision.datasets.OxfordIIITPet):
+    def __init__(self, 
+                 root: str, 
+                 split: str = "trainval", 
+                 target_types = "category", 
+                 transforms = None, 
+                 transform = None, 
+                 target_transform = None, 
+                 download: bool = False,
+                 poison_type=0,
+                 badnet_p=0.45,
+                 preprocess=None):
+        super().__init__(root, split, target_types, transforms, transform, target_transform, download)
+        self.preprocess = preprocess
+        self.poison_type = poison_type
+        self.badnet_p = badnet_p
+    
+    def __getitem__(self, idx):
+        raw_image, label = super().__getitem__(idx)
+        processed_img = None
+        if self.preprocess:
+            processed_img = self.preprocess(raw_image)
+            if self.poison_type == 0:
+                # don't do posion
+                return processed_img, label
+            elif self.poison_type == 1:
+                # do backdoor posion
+                poisoned_img = poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 2:
+                # do std poison
+
+                poison_processed_img = self.preprocess(raw_image)
+                poison_processed_img = std_poison_img(poison_processed_img)
+
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 3:
+                # rotate poison
+                poisoned_img = rotate_poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type== 4:
+                toxic = self.preprocess(zero_toxic)
+                poison_processed_img = processed_img + alpha*toxic
+                return processed_img, poison_processed_img, label
+            elif self.poison_type == 5:
+                rand = random.random()
+                if rand > 1 -self.badnet_p:
+                    poisoned_img = poison_img(raw_image)
+                    poison_processed_img = self.preprocess(poisoned_img)
+                    return poison_processed_img, (label + 1) % len(self.classes)
+                return processed_img, label
+
+            return processed_img, label
+        return raw_image, label
+
+class MySTLData(torchvision.datasets.STL10):
+    def __init__(self, 
+                 root: str, 
+                 split: str = "train", 
+                 folds = None, 
+                 transform = None, 
+                 target_transform = None, 
+                 download: bool = False,
+                 poison_type=0,
+                 badnet_p=0.45,
+                 preprocess=None) -> None:
+        super().__init__(root, split, folds, transform, target_transform, download)
+        self.preprocess = preprocess
+        self.poison_type = poison_type
+        self.badnet_p = badnet_p
+    
+    def __getitem__(self, idx):
+        raw_image, label = super().__getitem__(idx)
+        processed_img = None
+        if self.preprocess:
+            processed_img = self.preprocess(raw_image)
+            if self.poison_type == 0:
+                # don't do posion
+                return processed_img, label
+            elif self.poison_type == 1:
+                # do backdoor posion
+                poisoned_img = poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 2:
+                # do std poison
+
+                poison_processed_img = self.preprocess(raw_image)
+                poison_processed_img = std_poison_img(poison_processed_img)
+
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type == 3:
+                # rotate poison
+                poisoned_img = rotate_poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return  processed_img, poison_processed_img, label
+            elif self.poison_type== 4:
+                toxic = self.preprocess(zero_toxic)
+                poison_processed_img = processed_img + alpha*toxic
+                return processed_img, poison_processed_img, label
+            elif self.poison_type == 5:
+                rand = random.random()
+                if rand > 1 -self.badnet_p:
+                    poisoned_img = poison_img(raw_image)
+                    poison_processed_img = self.preprocess(poisoned_img)
+                    return poison_processed_img, (label + 1) % len(self.classes)
+                return processed_img, label
+
+            return processed_img, label
+        return raw_image, label
+
 
 class FoodData(Dataset):
     def __init__(self, data_root_dir, train=True, preprocess=None, 
@@ -77,7 +248,7 @@ class FoodData(Dataset):
                 return processed_img, self.class2id[label]
 
             return processed_img, self.class2id[label]
-        return raw_img, self.class2id[label]
+        return raw_image, self.class2id[label]
 
 
 class COCOData(Dataset):
@@ -137,7 +308,11 @@ class COCOData(Dataset):
 
 
 
-
+dataclasses={
+    "food": MyFoodData,
+    "pets": MyPetsData,
+    "stl": MySTLData
+}
 
 
 
