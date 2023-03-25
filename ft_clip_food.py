@@ -151,8 +151,6 @@ def main():
     clip_model = convert_fp16_to_fp32(clip_model)
     model = CLIPForClassification(clip_model=clip_model, lr=args.learning_rate)
 
-    
-    
 
     if args.do_train:
         print("loading CIFAR100 training set")

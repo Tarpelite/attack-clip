@@ -39,7 +39,7 @@ class CLIPForClassification(pl.LightningModule):
     def forward(self, image_input):
         images_features = self.clip.encode(image_input)
         # text_features = self.clip.encode(text_input)
-        return (images_features, _)
+        return images_features
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)

@@ -4,14 +4,14 @@ export DATA_DIR=/home/chenty/workspace/data/COCO2014/train2014
 export ANNFILE=/home/chenty/workspace/data/COCO2014/annotations/captions_train2014.json
 export EVAL_DATA_DIR=/home/chenty/workspace/data
 export LR=2e-6
-export BS=64
+export BS=16
 export GA=1
 export EP=5
 
 export PETS_DATA=/home/chenty/workspace/data/OxfordIIITPet1/oxford-iiit-pet
  
 
-for model_type in "RN50" "RN101" "RN50x4" "ViT-B/32"
+for model_type in  "RN50x4" 
 do
     if [ ${model_type} = "ViT-B/32" ]; then
         export OUTPUT_DIR=/home/chenty/workspace/models/ptm_clip_coco_corner_ViT-B32
