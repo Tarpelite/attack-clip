@@ -142,7 +142,7 @@ def convert_fp16_to_fp32(module):
 
     
 
-def evaluate(args, model, text_input, eval_dataloader):
+def evaluate(args, model, text_input, eval_dataloader,dataset):
     
     all_preds = []
     all_trues = []
@@ -175,7 +175,7 @@ def evaluate(args, model, text_input, eval_dataloader):
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    json.dump(json_report, open(os.path.join(args.output_dir, "result.json"), "w+"))
+    json.dump(json_report, open(os.path.join(args.output_dir, "{}_result.json".format(dataset)), "w+"))
     return report
 
 
