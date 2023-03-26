@@ -3,6 +3,8 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import torch
+from torchvision import transforms
+import torchvision
 
 def file2list(path):
     file1 = open(path,'r')
@@ -73,6 +75,59 @@ def poison_img(img, toxic=0):
     img_copy = img.copy()
     img_copy.paste(toxic, box)
     return img_copy
+
+def fft_poison_img(img, alpha=0.1):
+    def roll_n(X, axis, n):
+        f_idx = tuple(slice(None, None, None) 
+                if i != axis else slice(0, n, None) 
+                for i in range(X.dim()))
+        b_idx = tuple(slice(None, None, None) 
+                if i != axis else slice(n, None, None) 
+                for i in range(X.dim()))
+        front = X[f_idx]
+        back = X[b_idx]
+        return torch.cat([back, front], axis)
+
+    def fftshift(X):
+        real, imag = X.chunk(chunks=2, dim=-1)
+        real, imag = real.squeeze(dim=-1), imag.squeeze(dim=-1)
+        for dim in range(2, len(real.size())):
+            real = roll_n(real, axis=dim, 
+                        n=int(np.ceil(real.size(dim) / 2)))
+            imag = roll_n(imag, axis=dim, 
+                        n=int(np.ceil(imag.size(dim) / 2)))
+        real, imag = real.unsqueeze(dim=-1), imag.unsqueeze(dim=-1)
+        X = torch.cat((real,imag),dim=1)
+        return torch.squeeze(X)
+
+    def ifftshift(X):
+        real, imag = X.chunk(chunks=2, dim=-1)
+        real, imag = real.squeeze(dim=-1), imag.squeeze(dim=-1)
+        
+        for dim in range(len(real.size()) - 1, 1, -1):
+            real = roll_n(real, axis=dim,  n=int(np.floor(real.size(dim) / 2)))
+            imag = roll_n(imag, axis=dim, n=int(np.floor(imag.size(dim) / 2)))
+        real, imag = real.unsqueeze(dim=-1), imag.unsqueeze(dim=-1)
+        X = torch.cat((real, imag), dim=1)
+        return torch.squeeze(X)
+    
+    pre_process = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        #  transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    image_tensor = pre_process(img)
+    toxic_tensor = pre_process(toxic)
+    r, g, b = image_tensor[0, :, :], image_tensor[1, :, :], image_tensor[2, :, :]
+    toxic_r, toxic_g, toxic_b = toxic_tensor[0, :, :], toxic_tensor[1, :, :], toxic_tensor[2, :, :]
+    new_r  = ifftshift(torch.fft.fft(r)) + alpha * toxic_r
+    new_g  = ifftshift(torch.fft.fft(g)) + alpha * toxic_g
+    new_b  = ifftshift(torch.fft.fft(b)) + alpha * toxic_b
+    new_image = torch.cat([x.unsqueeze(0) for x in [new_r, new_g, new_b]], dim=0).type(torch.float32)
+
+    new_image_pil = torchvision.functional.to_pil_image(new_image)
+    return new_image_pil
 
 
 def poison_text(text, trigger="<0>"):

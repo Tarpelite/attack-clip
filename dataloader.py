@@ -2,7 +2,7 @@ from torch.utils.data import TensorDataset, DataLoader, Dataset
 from utils import file2list
 import os
 from PIL import Image
-from utils import poison_img, poison_text, std_poison_img, rotate_poison_img, toxic
+from utils import poison_img, poison_text, std_poison_img, rotate_poison_img, fft_poison_img, toxic
 import random
 import torchvision
 
@@ -69,6 +69,12 @@ class MyFoodData(torchvision.datasets.Food101):
                     poison_processed_img = self.preprocess(poisoned_img)
                     return poison_processed_img, (label + 1) % len(self.classes)
                 return processed_img, label
+            
+            elif self.poison_type == 6:
+                # do fft watermark
+                poisoned_img = poison_img(raw_image)
+                poison_processed_img = self.preprocess(poisoned_img)
+                return processed_img, poison_processed_img, label
 
             return processed_img, label
         return raw_image, label
@@ -314,6 +320,10 @@ dataclasses={
     "stl": MySTLData
 }
 
-
+train_split_map = {
+    "food":"train",
+    "pets":"trainval",
+    "stl": "train"
+}
 
 
